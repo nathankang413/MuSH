@@ -1,0 +1,25 @@
+ls | grep o | sort | wc
+ls Makefile mush2 > file1
+cat file1
+cat < file1 > file2
+cat file2
+cat > file2 | sort
+ls | more < file2
+echo a b c d e f g h i j
+./foo
+echo "hi" > foo
+cat foo
+./foo
+ls -l foo
+rm foo
+cd foo
+ls > foo
+cd foo
+rm foo
+mkdir foo
+cd foo
+pwd
+
+
+/bin/echo -n Hello,
+echo world

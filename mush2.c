@@ -4,9 +4,12 @@ int main(int argc, char *argv[]) {
     int o, v=0, p=0;
     char *cmd_path=NULL, *line;
     FILE *cmd_file=stdin;
+    struct sigaction sa;
     struct pipeline *pl;
+    struct clstage *curr;
     pid_t child;
-    int in_fd, out_fd, status;
+    int in_fd, out_fd, next_in_fd, pipefd[2];
+    int status;
 
     /* parse options */
     while ((o = getopt(argc, argv, "vp")) != -1) {
@@ -47,6 +50,10 @@ int main(int argc, char *argv[]) {
     }
 
     /* todo: handle sigint */
+    sa.sa_handler = sigint_handler;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
 
     /* CLI loop */
     while (!feof(cmd_file)) {
@@ -72,64 +79,88 @@ int main(int argc, char *argv[]) {
         }
 
         if (!p && pl->length > 0) { /* actually run the command */
-            /* for just one command (todo) */
-            if (pl->length > 1) {
-                fprintf(stderr, "mush2: only one command has been implemented\n");
-                continue;
-            }
 
-            /* open infile for reading */
-            in_fd = STDIN_FILENO;
-            if (pl->stage->inname) {
-                if ((in_fd = open(pl->stage->inname, O_RDONLY)) == -1) {
-                    perror(pl->stage->inname);
-                    continue;
+            /* need to implement cd */
+
+
+            /* loop through all the stages in the pipeline */
+            curr = pl->stage;
+            in_fd = -1; out_fd = -1; next_in_fd = -1;
+            while (curr) {
+
+                /* if there is an input file, open it*/
+                if (curr->inname) {
+                    if ((in_fd = open(curr->inname, O_RDONLY)) == -1) {
+                        perror(curr->inname);
+                        break;
+                    }
                 }
-            }
+                /* if there is a pipe from the previous program, use that */
+                else if (next_in_fd != -1) {
+                    in_fd = next_in_fd;
+                } 
 
-            /* open outfile for writing */
-            out_fd = STDOUT_FILENO;
-            if (pl->stage->outname) {
-                if ((out_fd = open(pl->stage->outname, 
-                    O_WRONLY | O_CREAT | O_TRUNC, 0666)) == -1) {
-                    perror(pl->stage->outname);
-                    continue;
+                /* if there is an output file, open it */
+                if (curr->outname) {
+                    if ((out_fd = open(curr->outname, 
+                        O_WRONLY | O_CREAT | O_TRUNC, 0666)) == -1) {
+                        perror(curr->outname);
+                        break;
+                    }
+                    next_in_fd = -1;
                 }
-            }
-
-            /* fork off child process */
-            if ((child = fork()) == -1) {
-                perror("fork");
-                continue;
-            }
-
-            /* child will call exec */
-            if (child == 0) {
-                if (dup2(in_fd, STDIN_FILENO) != in_fd) {
-                    close(in_fd);
+                /* if there is a next program, make a pipe */
+                else if (curr->next) {
+                    if (pipe(pipefd) == -1) {
+                        perror("pipe");
+                        break;
+                    }
+                    out_fd = pipefd[1];
+                    next_in_fd = pipefd[0];
                 }
-                if (dup2(out_fd, STDOUT_FILENO) != out_fd) {
-                    close(out_fd);
-                }
-                execvp(pl->stage->argv[0], pl->stage->argv);
-                perror(pl->stage->argv[0]);
-                return EXIT_FAILURE;
-            }
 
-            /* close parent's fds to pipes or IO redirection */
-            if (in_fd != STDIN_FILENO)
+                /* create the child process  */
+                if ((child = fork()) == -1) {
+                    perror("fork");
+                    break;
+                }
+
+                if (child == 0) {
+                    /* child process sets up IO */
+                    if (in_fd != -1) {
+                        if (dup2(in_fd, STDIN_FILENO) == -1) {
+                            perror("dup2");
+                            break;
+                        }
+                        close(in_fd);
+                    }
+                    if (out_fd != -1) {
+                        if (dup2(out_fd, STDOUT_FILENO) == -1) {
+                            perror("dup2");
+                            break;
+                        }
+                        close(out_fd);
+                    }
+                    close(next_in_fd);
+
+                    /* child process execs */
+                    execvp(pl->stage->argv[0], pl->stage->argv);
+                    perror(pl->stage->argv[0]);
+                    return EXIT_FAILURE;
+                }
+
+                /* parent process closes fds except next_in_fd */
                 close(in_fd);
-            if (out_fd != STDOUT_FILENO)
                 close(out_fd);
 
-            /* parent will wait for child to die */
-            if (waitpid(child, &status, 0) == -1) {
-                perror("waitpid");
-                return EXIT_FAILURE;    /* todo: should this be continue? */
+                /* parent process waits for child */
+                if (waitpid(child, &status, 0) == -1) {
+                    perror("waitpid");
+                    break;
+                }
+                
+                curr = curr->next;
             }
-
-            /* todo: look at status? */
-
         }
 
         free(line);
@@ -138,4 +169,12 @@ int main(int argc, char *argv[]) {
 
     yylex_destroy();
     return EXIT_SUCCESS;
+}
+
+
+void sigint_handler(int signal) {
+    putchar('\n');
+    fflush(stdout);
+    /* does nothing (todo) */
+    /* very bad things happen when I nest mush2 (todo) */
 }

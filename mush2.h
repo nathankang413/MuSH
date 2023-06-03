@@ -7,8 +7,12 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <string.h>
+#include <pwd.h>
 #include <mush.h>
 
 #define USAGE "usage: %s [ -v ] [ infile ]\n", argv[0]
 
 void sigint_handler(int signal);
+
+char *gethome();

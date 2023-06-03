@@ -7,6 +7,7 @@ int main(int argc, char *argv[]) {
     struct sigaction sa;
     struct pipeline *pl;
     struct clstage *curr;
+    char *home;
     pid_t child;
     int in_fd, out_fd, next_in_fd, pipefd[2];
     int status;
@@ -56,7 +57,7 @@ int main(int argc, char *argv[]) {
     sigaction(SIGINT, &sa, NULL);
 
     /* CLI loop */
-    while (!feof(cmd_file)) {
+    while (!feof(cmd_file)) {   /* todo: all error continues skip freeing memory */
 
         if (isatty(fileno(cmd_file))) {
             printf("8-P ");
@@ -80,11 +81,29 @@ int main(int argc, char *argv[]) {
 
         if (!p && pl->length > 0) { /* actually run the command */
 
-            /* need to implement cd */
+            curr = pl->stage;
 
+            /* handle cd */
+            if (strcmp(curr->argv[0], "cd") == 0) {
+                if (curr->argc > 1) {
+                    chdir(curr->argv[1]);
+                } else {
+                    if ((home = gethome())) {
+                        chdir(home);
+                    } else {
+                        fprintf(stderr, 
+                        "cd: unable to determine home directory\n");
+                    }
+                }
+                continue;
+            }
+
+            /* handle exit */
+            if (strcmp(curr->argv[0], "exit") == 0) {
+                break;
+            }
 
             /* loop through all the stages in the pipeline */
-            curr = pl->stage;
             in_fd = -1; out_fd = -1; next_in_fd = -1;
             while (curr) {
 
@@ -141,7 +160,9 @@ int main(int argc, char *argv[]) {
                         }
                         close(out_fd);
                     }
-                    close(next_in_fd);
+                    if (next_in_fd != -1) {
+                        close(next_in_fd);
+                    }
 
                     /* child process execs */
                     execvp(pl->stage->argv[0], pl->stage->argv);
@@ -150,8 +171,10 @@ int main(int argc, char *argv[]) {
                 }
 
                 /* parent process closes fds except next_in_fd */
-                close(in_fd);
-                close(out_fd);
+                if (in_fd != -1) 
+                    close(in_fd);
+                if (out_fd != -1) 
+                    close(out_fd);
 
                 /* parent process waits for child */
                 if (waitpid(child, &status, 0) == -1) {
@@ -177,4 +200,20 @@ void sigint_handler(int signal) {
     fflush(stdout);
     /* does nothing (todo) */
     /* very bad things happen when I nest mush2 (todo) */
+}
+
+
+char *gethome() {
+    char *home;
+    struct passwd *pw;
+
+    if ((home = getenv("HOME"))) {
+        return home;
+    }
+
+    if ((pw = getpwuid(getuid()))) {
+        return pw->pw_dir;
+    }
+
+    return NULL;
 }

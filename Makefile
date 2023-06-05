@@ -11,14 +11,20 @@ TEST_FILE = test-cmds
 all: $(PROGRAM)
 
 # compile program
-OBJS = $(PROGRAM).o
+OBJS = $(PROGRAM).o shell.o child.o
 INC = -I ~pn-cs357/Given/Mush/include
 LIBS = -L ~pn-cs357/Given/Mush/lib64 -lmush
 $(PROGRAM): $(OBJS)
 	$(LD) $(CFLAGS) $(DEBUG) -o $(PROGRAM) $(OBJS) $(LIBS)
 
-$(PROGRAM).o: $(PROGRAM).c
+$(PROGRAM).o: $(PROGRAM).c $(PROGRAM).h
 	$(CC) $(CFLAGS) $(DEBUG) -c $(INC) -o $(PROGRAM).o $(PROGRAM).c
+
+shell.o: shell.c shell.h
+	$(CC) $(CFLAGS) $(DEBUG) -c $(INC) -o shell.o shell.c
+
+child.o: child.c child.h
+	$(CC) $(CFLAGS) $(DEBUG) -c $(INC) -o child.o child.c
 
 submit: 
 	~pn-cs357/bin/longlines.pl *.c *.h

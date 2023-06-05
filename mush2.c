@@ -2,16 +2,9 @@
 
 int main(int argc, char *argv[]) {
     int o, v=0, p=0;
-    char *cmd_path=NULL, *line;
+    char *cmd_path=NULL;
     FILE *cmd_file=stdin;
-    struct sigaction sa;
-    struct pipeline *pl;
-    struct clstage *curr;
-    char *home;
-    pid_t child;
-    int in_fd, out_fd, next_in_fd, pipefd[2];
-    int status;
-
+    
     /* parse options */
     while ((o = getopt(argc, argv, "vp")) != -1) {
         switch (o) {
@@ -50,170 +43,9 @@ int main(int argc, char *argv[]) {
         fflush(stdout);
     }
 
-    /* todo: handle sigint */
-    sa.sa_handler = sigint_handler;
-    sa.sa_flags = 0;
-    sigemptyset(&sa.sa_mask);
-    sigaction(SIGINT, &sa, NULL);
-
-    /* CLI loop */
-    while (!feof(cmd_file)) {   /* todo: all error continues skip freeing memory */
-
-        if (isatty(fileno(cmd_file))) {
-            printf("8-P ");
-            fflush(stdout);
-        }
-
-        if (!(line = readLongString(cmd_file))) {
-            if (clerror)
-                fprintf(stderr, "readLongString: clerror %d\n", clerror);
-            continue;
-        }
-
-        if (!(pl = crack_pipeline(line))) {
-            /* fprintf(stderr, "crack_pipeline: clerror %d\n", clerror); */
-            continue;
-        }
-
-        if (v) {
-            print_pipeline(stdout, pl);
-        }
-
-        if (!p && pl->length > 0) { /* actually run the command */
-
-            curr = pl->stage;
-
-            /* handle cd */
-            if (strcmp(curr->argv[0], "cd") == 0) {
-                if (curr->argc > 1) {
-                    chdir(curr->argv[1]);
-                } else {
-                    if ((home = gethome())) {
-                        chdir(home);
-                    } else {
-                        fprintf(stderr, 
-                        "cd: unable to determine home directory\n");
-                    }
-                }
-                continue;
-            }
-
-            /* handle exit */
-            if (strcmp(curr->argv[0], "exit") == 0) {
-                break;
-            }
-
-            /* loop through all the stages in the pipeline */
-            in_fd = -1; out_fd = -1; next_in_fd = -1;
-            while (curr) {
-
-                /* if there is an input file, open it*/
-                if (curr->inname) {
-                    if ((in_fd = open(curr->inname, O_RDONLY)) == -1) {
-                        perror(curr->inname);
-                        break;
-                    }
-                }
-                /* if there is a pipe from the previous program, use that */
-                else if (next_in_fd != -1) {
-                    in_fd = next_in_fd;
-                } 
-
-                /* if there is an output file, open it */
-                if (curr->outname) {
-                    if ((out_fd = open(curr->outname, 
-                        O_WRONLY | O_CREAT | O_TRUNC, 0666)) == -1) {
-                        perror(curr->outname);
-                        break;
-                    }
-                    next_in_fd = -1;
-                }
-                /* if there is a next program, make a pipe */
-                else if (curr->next) {
-                    if (pipe(pipefd) == -1) {
-                        perror("pipe");
-                        break;
-                    }
-                    out_fd = pipefd[1];
-                    next_in_fd = pipefd[0];
-                }
-
-                /* create the child process  */
-                if ((child = fork()) == -1) {
-                    perror("fork");
-                    break;
-                }
-
-                if (child == 0) {
-                    /* child process sets up IO */
-                    if (in_fd != -1) {
-                        if (dup2(in_fd, STDIN_FILENO) == -1) {
-                            perror("dup2");
-                            break;
-                        }
-                        close(in_fd);
-                    }
-                    if (out_fd != -1) {
-                        if (dup2(out_fd, STDOUT_FILENO) == -1) {
-                            perror("dup2");
-                            break;
-                        }
-                        close(out_fd);
-                    }
-                    if (next_in_fd != -1) {
-                        close(next_in_fd);
-                    }
-
-                    /* child process execs */
-                    execvp(pl->stage->argv[0], pl->stage->argv);
-                    perror(pl->stage->argv[0]);
-                    return EXIT_FAILURE;
-                }
-
-                /* parent process closes fds except next_in_fd */
-                if (in_fd != -1) 
-                    close(in_fd);
-                if (out_fd != -1) 
-                    close(out_fd);
-
-                /* parent process waits for child */
-                if (waitpid(child, &status, 0) == -1) {
-                    perror("waitpid");
-                    break;
-                }
-                
-                curr = curr->next;
-            }
-        }
-
-        free(line);
-        free_pipeline(pl);
-    }
+    shell_loop(cmd_file, v, p);
 
     yylex_destroy();
+    printf("VERB: Successful exit!\n");   /* todo: delete */
     return EXIT_SUCCESS;
-}
-
-
-void sigint_handler(int signal) {
-    putchar('\n');
-    fflush(stdout);
-    /* does nothing (todo) */
-    /* very bad things happen when I nest mush2 (todo) */
-}
-
-
-char *gethome() {
-    char *home;
-    struct passwd *pw;
-
-    if ((home = getenv("HOME"))) {
-        return home;
-    }
-
-    if ((pw = getpwuid(getuid()))) {
-        return pw->pw_dir;
-    }
-
-    return NULL;
 }

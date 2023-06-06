@@ -46,6 +46,8 @@ int main(int argc, char *argv[]) {
     shell_loop(cmd_file, v, p);
 
     yylex_destroy();
-    printf("VERB: Successful exit!\n");   /* todo: delete */
+    if (v) 
+        printf("VERB: Successful exit!\n"); 
+
     return EXIT_SUCCESS;
 }

@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <pwd.h>
+#include <errno.h>
 
 #include <mush.h>
 #include "child.h"

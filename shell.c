@@ -44,7 +44,7 @@ void shell_loop(FILE *cmd_file, int v, int p) {
     while (!feof(cmd_file)) {   /* todo: all error continues skip freeing memory */
 
         /* print prompt */
-        if (isatty(fileno(cmd_file))) {
+        if (isatty(fileno(cmd_file)) && isatty(fileno(stdout))) {
             printf("8-P ");
             fflush(stdout);
         }
@@ -60,6 +60,7 @@ void shell_loop(FILE *cmd_file, int v, int p) {
         /* split the command into a pipeline */
         if (!(pl = crack_pipeline(line))) {
             /* fprintf(stderr, "crack_pipeline: clerror %d\n", clerror); */
+            free(line);
             continue;
         }
 
@@ -81,10 +82,14 @@ void shell_loop(FILE *cmd_file, int v, int p) {
             /* handle cd command */
             if (strcmp(curr.argv[0], "cd") == 0) {
                 if (curr.argc > 1) {
-                    chdir(curr.argv[1]);
+                    if (chdir(curr.argv[1]) == -1) {
+                        perror(curr.argv[1]);
+                    }
                 } else {
                     if ((home = gethome())) {
-                        chdir(home);
+                        if (chdir(home) == -1) {
+                            perror(home);
+                        }
                     } else {
                         fprintf(stderr, 
                         "cd: unable to determine home directory\n");
@@ -95,6 +100,8 @@ void shell_loop(FILE *cmd_file, int v, int p) {
 
             /* handle exit command */
             if (strcmp(curr.argv[0], "exit") == 0) {
+                free(line);
+                free_pipeline(pl);
                 return ;
             }
 

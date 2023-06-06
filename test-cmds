@@ -23,3 +23,9 @@ pwd
 
 /bin/echo -n Hello,
 echo world
+
+cd ..
+
+rm file1
+rm file2
+rm -r foo

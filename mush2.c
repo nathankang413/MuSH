@@ -1,5 +1,7 @@
 #include "mush2.h"
 
+/* todo: memory issues */
+
 int main(int argc, char *argv[]) {
     int o, v=0, p=0;
     char *cmd_path=NULL;
